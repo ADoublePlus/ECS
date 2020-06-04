@@ -1,0 +1,103 @@
+#pragma once
+
+#include "ecs_define.h"
+#include "ecs_functional.h"
+#include "entity.h"
+#include "base_system.h"
+#include "component_pool.h"
+
+#include <vector>
+#include <unordered_map>
+
+namespace ecs 
+{
+    class Entity;
+
+    class EntityAdmin
+    {
+        private:
+            std::vector<BaseSystem*> _systems;
+            std::unordered_map<EntityID, Entity*> _entities;
+            ComponentPool _component_pool;
+
+        public:
+            EntityAdmin() = default;
+            ~EntityAdmin();
+
+            void Update(float time_step);
+
+            template <class S>
+            S& CreateSystem();
+
+            template <class S>
+            void RemoveSystem();
+
+            template <class S>
+            bool HasSystem();
+
+            template <class E>
+            Entity& CreateEntity();
+            Entity* FindEntity(EntityID eid);
+            void DestroyEntity(EntityID eid);
+
+            // Use entity pool to generate eid
+            EntityID GenerateEntityID()
+            {
+                static EntityID start_id = 0;
+                return start_id++;
+            }
+
+            ComponentVector& GetAllComponents(index_t id);
+
+        private:
+            void DestroyAllSystems();
+            void DestroyAllEntities();
+    };
+
+    template <class S>
+    S& EntityAdmin::CreateSystem()
+    {
+        ECS_ASSERT_IS_SYSTEM(S);
+        ECS_ASSERT(!HasSystem<S>(), "System already exists");
+
+        index_t system_index = details::SystemIndex::index<S>();
+
+        if (system_index >= _systems.size())
+        {
+            _systems.resize(system_index + 1, nullptr);
+        }
+
+        S* sys = new S(this);
+        _systems[system_index] = sys;
+        return *sys;
+    }
+
+    template <class S>
+    void EntityAdmin::RemoveSystem()
+    {
+        ECS_ASSERT_IS_SYSTEM(S);
+        ECS_ASSERT(HasSystem<S>(), "System does not exist");
+
+        delete _systems[details::SystemIndex::index<S>()];
+        _systems[details::SystemIndex::index<S>()] = nullptr;
+    }
+
+    template <class S>
+    bool EntityAdmin::HasSystem()
+    {
+        ECS_ASSERT_IS_SYSTEM(S);
+
+        return _systems.size() > details::SystemIndex::index<S>() && _systems[details::SystemIndex::index<S>()] != nullptr;
+    }
+
+    template <class E>
+    Entity& ecs::EntityAdmin::CreateEntity()
+    {
+        ECS_ASSERT_IS_ENTITY(E);
+
+        EntityID eid = GenerateEntityID();
+        Entity* ent = new E(_component_pool, eid);
+        _entities.insert(std::make_pair(eid, ent));
+        return *ent;
+    }
+}
